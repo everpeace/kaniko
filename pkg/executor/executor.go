@@ -18,6 +18,7 @@ package executor
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -175,7 +176,14 @@ func DoBuild(dockerfilePath, srcContext, destination, snapshotMode string, docke
 		return err
 	}
 
-	return remote.Write(destRef, sourceImage, pushAuth, http.DefaultTransport, wo)
+	tr := http.DefaultTransport
+	if dockerInsecureSkipTLSVerify {
+		tr.(*http.Transport).TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+	}
+
+	return remote.Write(destRef, sourceImage, pushAuth, tr, wo)
 }
 
 func getHasher(snapshotMode string) (func(string) (string, error), error) {
