@@ -34,6 +34,7 @@ import (
 	"github.com/google/go-containerregistry/v1"
 	"github.com/google/go-containerregistry/v1/mutate"
 	"github.com/google/go-containerregistry/v1/remote"
+	"github.com/google/go-containerregistry/v1/remote/transport"
 
 	"github.com/GoogleContainerTools/kaniko/pkg/commands"
 	"github.com/GoogleContainerTools/kaniko/pkg/constants"
@@ -177,9 +178,12 @@ func DoBuild(dockerfilePath, srcContext, destination, snapshotMode string, docke
 	}
 
 	tr := http.DefaultTransport
+
+	// Skip tls check if dockerInsecureSkipTLSVerify is setted.
 	if dockerInsecureSkipTLSVerify {
-		tr.(*http.Transport).TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true,
+		tr, destRef, err = setInsecureRegistry(tr, destRef)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -225,4 +229,35 @@ func setDefaultEnv() error {
 		}
 	}
 	return nil
+}
+
+func setInsecureRegistry(tr http.RoundTripper, destRef name.Reference) (http.RoundTripper, name.Reference, error) {
+	tr.(*http.Transport).TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	// Ping registry and set Scheme if registry runs over HTTP.
+	client := http.Client{Transport: tr}
+	url := fmt.Sprintf("%s://%s/v2/", transport.Scheme(destRef.Context().Registry), destRef.Context().Registry.Name())
+	_, err := client.Get(url)
+	if err == nil {
+		return tr, destRef, nil
+	}
+
+	switch destRef.(type) {
+	case name.Tag:
+		ref := destRef.(name.Tag)
+		ref.Registry.Scheme = "http"
+		destRef = ref
+	case name.Digest:
+		ref := destRef.(name.Digest)
+		ref.Registry.Scheme = "http"
+		destRef = ref
+	default:
+		return tr, destRef, err
+	}
+
+	url = fmt.Sprintf("%s://%s/v2/", transport.Scheme(destRef.Context().Registry), destRef.Context().Registry.Name())
+	_, err = client.Get(url)
+	return tr, destRef, err
 }
