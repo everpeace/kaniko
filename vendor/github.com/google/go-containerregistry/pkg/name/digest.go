@@ -35,6 +35,17 @@ type Digest struct {
 // Ensure Digest implements Reference
 var _ Reference = (*Digest)(nil)
 
+// MakeInsecure returns insecured reference
+func (d Digest) MakeInsecure() Reference {
+	return Digest{
+		Repository{
+			Registry{insecure: true, registry: d.Registry.registry},
+			d.repository,
+		},
+		d.digest,
+	}
+}
+
 // Context implements Reference.
 func (d Digest) Context() Repository {
 	return d.Repository

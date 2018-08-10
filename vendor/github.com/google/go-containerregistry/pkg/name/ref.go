@@ -35,6 +35,9 @@ type Reference interface {
 
 	// Scope is the scope needed to access this reference.
 	Scope(string) string
+
+	// MakeInsecure returns new Reference with insecure registry
+	MakeInsecure() Reference
 }
 
 // ParseReference parses the string as a reference, either by tag or digest.

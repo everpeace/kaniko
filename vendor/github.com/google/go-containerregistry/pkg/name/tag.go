@@ -34,6 +34,17 @@ type Tag struct {
 // Ensure Tag implements Reference
 var _ Reference = (*Tag)(nil)
 
+// MakeInsecure returns insecured reference
+func (t Tag) MakeInsecure() Reference {
+	return Tag{
+		Repository{
+			Registry{insecure: true, registry: t.Registry.registry},
+			t.repository,
+		},
+		t.tag,
+	}
+}
+
 // Context implements Reference.
 func (t Tag) Context() Repository {
 	return t.Repository

@@ -18,6 +18,7 @@ package executor
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -184,18 +185,19 @@ func (w *withUserAgent) RoundTrip(r *http.Request) (*http.Response, error) {
 	return w.t.RoundTrip(r)
 }
 
-func DoPush(image v1.Image, destinations []string, tarPath string) error {
+func DoPush(image v1.Image, destinations []string, tarPath string, dockerInsecureSkipTLSVerify bool) error {
 
 	// continue pushing unless an error occurs
 	for _, destination := range destinations {
 		// Push the image
+		var destRef name.Reference
 		destRef, err := name.NewTag(destination, name.WeakValidation)
 		if err != nil {
 			return err
 		}
 
 		if tarPath != "" {
-			return tarball.WriteToFile(tarPath, destRef, image, nil)
+			return tarball.WriteToFile(tarPath, destRef.(name.Tag), image, nil)
 		}
 
 		k8sc, err := k8schain.NewNoClient()
@@ -208,8 +210,17 @@ func DoPush(image v1.Image, destinations []string, tarPath string) error {
 			return err
 		}
 
+		// Skip tls check if dockerInsecureSkipTLSVerify is setted.
+		tr := http.DefaultTransport
+		if dockerInsecureSkipTLSVerify {
+			tr, destRef, err = setInsecureRegistry(tr, destRef)
+			if err != nil {
+				return err
+			}
+		}
+
 		// Create a transport to set our user-agent.
-		rt := &withUserAgent{t: http.DefaultTransport}
+		rt := &withUserAgent{t: tr}
 
 		if err := remote.Write(destRef, image, pushAuth, rt, remote.WriteOptions{}); err != nil {
 			logrus.Error(fmt.Errorf("Failed to push to destination %s", destination))
@@ -278,4 +289,24 @@ func resolveOnBuild(stage *instructions.Stage, config *v1.Config) error {
 	// Blank out the Onbuild command list for this image
 	config.OnBuild = nil
 	return nil
+}
+
+func setInsecureRegistry(tr http.RoundTripper, destRef name.Reference) (http.RoundTripper, name.Reference, error) {
+	tr.(*http.Transport).TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	// Ping registry and set Scheme if registry runs over HTTP.
+	client := http.Client{Transport: tr}
+	url := fmt.Sprintf("%s://%s/v2/", destRef.Context().Registry.Scheme(), destRef.Context().Registry.Name())
+	_, err := client.Get(url)
+	if err == nil {
+		return tr, destRef, nil
+	}
+
+	destRef = destRef.MakeInsecure()
+
+	url = fmt.Sprintf("%s://%s/v2/", destRef.Context().Registry.Scheme(), destRef.Context().Registry.Name())
+	_, err = client.Get(url)
+	return tr, destRef, err
 }
