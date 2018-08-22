@@ -40,7 +40,7 @@ var (
 )
 
 // RetrieveSourceImage returns the base image of the stage at index
-func RetrieveSourceImage(index int, buildArgs []string, stages []instructions.Stage) (v1.Image, error) {
+func RetrieveSourceImage(index int, buildArgs []string, dockerInsecureSkipTLSVerify bool, stages []instructions.Stage) (v1.Image, error) {
 	currentStage := stages[index]
 	currentBaseName, err := ResolveEnvironmentReplacement(currentStage.BaseName, buildArgs, false)
 	if err != nil {
@@ -62,7 +62,7 @@ func RetrieveSourceImage(index int, buildArgs []string, stages []instructions.St
 		}
 	}
 	// Otherwise, initialize image as usual
-	return retrieveRemoteImage(currentBaseName)
+	return retrieveRemoteImage(currentBaseName, dockerInsecureSkipTLSVerify)
 }
 
 // RetrieveConfigFile returns the config file for an image
@@ -83,16 +83,39 @@ func tarballImage(index int) (v1.Image, error) {
 	return tarball.ImageFromPath(tarPath, nil)
 }
 
-func remoteImage(image string) (v1.Image, error) {
+func remoteImage(image string, dockerInsecureSkipTLSVerify bool) (v1.Image, error) {
 	logrus.Infof("Downloading base image %s", image)
 	ref, err := name.ParseReference(image, name.WeakValidation)
 	if err != nil {
 		return nil, err
 	}
+
+	if dockerInsecureSkipTLSVerify {
+		switch ref.(type) {
+		case name.Tag:
+			casted := ref.(name.Tag)
+			insecureRegistry, err := name.NewInsecureRegistry(casted.Repository.RegistryStr(), name.WeakValidation)
+			if err == nil {
+				casted.Repository.Registry = insecureRegistry
+				ref = casted
+				logrus.Infof("made %s be insecure: registry scheme = %s", image, ref.Context().Registry.Scheme())
+			}
+		case name.Digest:
+			casted := ref.(name.Digest)
+			insecureRegistry, err := name.NewInsecureRegistry(casted.Repository.RegistryStr(), name.WeakValidation)
+			if err == nil {
+				casted.Repository.Registry = insecureRegistry
+				ref = casted
+				logrus.Infof("made %s be insecure: registry scheme = %s", image, ref.Context().Registry.Scheme())
+			}
+		default:
+		}
+	}
+
 	k8sc, err := k8schain.NewNoClient()
 	if err != nil {
 		return nil, err
 	}
 	kc := authn.NewMultiKeychain(authn.DefaultKeychain, k8sc)
-	return remote.Image(ref, remote.WithAuthFromKeychain(kc))
+	return remote.Image(ref, remote.WithAuthFromKeychain(kc), remote.WithInsecureRegistryIfRequired(dockerInsecureSkipTLSVerify))
 }

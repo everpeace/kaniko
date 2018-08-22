@@ -100,6 +100,7 @@ var RootCmd = &cobra.Command{
 			SingleSnapshot: singleSnapshot,
 			Reproducible:   reproducible,
 			Target:         target,
+			DockerInsecureSkipTLSVerify: dockerInsecureSkipTLSVerify,
 		})
 		if err != nil {
 			logrus.Error(err)

@@ -47,13 +47,14 @@ import (
 
 // KanikoBuildArgs contains all the args required to build the image
 type KanikoBuildArgs struct {
-	DockerfilePath string
-	SrcContext     string
-	SnapshotMode   string
-	Args           []string
-	SingleSnapshot bool
-	Reproducible   bool
-	Target         string
+	DockerfilePath              string
+	SrcContext                  string
+	SnapshotMode                string
+	Args                        []string
+	SingleSnapshot              bool
+	Reproducible                bool
+	Target                      string
+	DockerInsecureSkipTLSVerify bool
 }
 
 func DoBuild(k KanikoBuildArgs) (v1.Image, error) {
@@ -70,7 +71,7 @@ func DoBuild(k KanikoBuildArgs) (v1.Image, error) {
 	for index, stage := range stages {
 		finalStage := finalStage(index, k.Target, stages)
 		// Unpack file system to root
-		sourceImage, err := util.RetrieveSourceImage(index, k.Args, stages)
+		sourceImage, err := util.RetrieveSourceImage(index, k.Args, k.DockerInsecureSkipTLSVerify, stages)
 		if err != nil {
 			return nil, err
 		}

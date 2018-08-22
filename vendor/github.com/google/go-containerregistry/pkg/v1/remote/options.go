@@ -15,6 +15,7 @@
 package remote
 
 import (
+	"crypto/tls"
 	"log"
 	"net/http"
 
@@ -51,6 +52,20 @@ func WithAuthFromKeychain(keys authn.Keychain) ImageOption {
 			log.Println("No matching credentials were found, falling back on anonymous")
 		}
 		i.auth = auth
+		return nil
+	}
+}
+
+// WithInsecureRegistryIfRequired is a functional option for overriding
+// insecureSkipVerify on the transport when insecure is true
+func WithInsecureRegistryIfRequired(insecure bool) ImageOption {
+	return func(i *imageOpener) error {
+		if insecure {
+			i.transport.(*http.Transport).TLSClientConfig = &tls.Config{
+				InsecureSkipVerify: true,
+			}
+			log.Printf("made insecureSkipVerify = %v", i.transport.(*http.Transport).TLSClientConfig.InsecureSkipVerify)
+		}
 		return nil
 	}
 }
